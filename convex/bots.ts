@@ -33,7 +33,7 @@ const relevantHistoricMessages = async (
     let result = await fetchEmbedding(prompt.body);
     const results = await ctx.vectorSearch("messages", "by_embedding", {
         vector: result.embedding,
-        limit: 5,
+        limit: 10,
         filter: (q) => q.eq("user", user),
     });
     let ids = results.map((r) => r._id);
@@ -75,7 +75,7 @@ export const respond = internalAction({
         let channel = await ctx.runQuery(internal.channels.getById, { channel_id });
         let messages = await ctx.runQuery(
             internal.messages.getLatest,
-            { channel_id, count: 10 },
+            { channel_id, count: 5 },
         );
         // The messages are in reverse order. Fix it so the bot responds to the
         // last one.
