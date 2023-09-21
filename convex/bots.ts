@@ -7,11 +7,11 @@ import { Doc, Id } from "./_generated/dataModel";
 
 export const getForChannel = internalQuery({
     args: { channel_id: v.id("channels") },
-    handler: async (ctx, { channel_id }) : Promise<Doc<"bots"> | null> => {
+    handler: async (ctx, { channel_id }) : Promise<Doc<"bots">[]> => {
         return await ctx.db
             .query("bots")
             .withIndex("by_channel", (q) => q.eq("channel", channel_id))
-            .first();
+            .collect();
     }
 });
 
@@ -43,8 +43,8 @@ const relevantHistoricMessages = async (
 const prefixPrompt = async (
     ctx: ActionCtx,
     profile: Doc<"bots">,
-    historicMessages: Doc<"messages">[],
-): Promise<LLMMessage | null> => {
+    historicMessages: string[],
+): Promise<LLMMessage> => {
     let content = `Your name is ${profile.name}. You are responding to users on chat app called Slack.\n`;
 
     let facts = await ctx.runQuery(internal.bots.getBotFacts, { bot_id: profile._id });
@@ -82,40 +82,34 @@ export const respond = internalAction({
         messages.reverse();
 
         // Only respond if a bot is configured for this channel.
-        let profile = await ctx.runQuery(internal.bots.getForChannel, { channel_id });
-        if (profile === null) {
-            return null;
-        }
-
-        // Fetch relevant historic messages.
-        let historicMessages : Doc<"messages">[] = [];
-        if (profile.impersonated_user) {
-            historicMessages = await relevantHistoricMessages(
-                ctx, profile.impersonated_user, messages[messages.length-1],
-            );
-        }
-
-        let prompt = await prefixPrompt(ctx, profile, historicMessages);
-        if (prompt === null) {
-            console.log("No bot configured for channel {}", channel_id);
-            return;
-        }
-        let chatMessages : LLMMessage[] = messages.map((m) => {
-            return {
-                content: m.body,
-                role: 'user',
+        let bots = await ctx.runQuery(internal.bots.getForChannel, { channel_id });
+        for (let bot of bots) {
+            // Fetch relevant historic messages.
+            let historicMessages : string[] = [];
+            if (bot.impersonated_user) {
+                historicMessages = await relevantHistoricMessages(
+                    ctx, bot.impersonated_user, messages[messages.length-1],
+                );
             }
-        });
-        console.log("Prefix prompt", prompt, chatMessages);
 
-        let response = await chatCompletion({
-            messages: [
-                prompt,
-                ...chatMessages,
-            ]
-        });
-        console.log(`OpenAI request took ${response.ms} and ${response.retries} retries`);
-        let responseContent = await response.content.readAll();
-        await postMessage(ctx, profile.name, channel?.slack_info.id, responseContent);
+            let prompt = await prefixPrompt(ctx, bot, historicMessages);
+            let chatMessages : LLMMessage[] = messages.map((m) => {
+                return {
+                    content: m.body,
+                    role: 'user',
+                }
+            });
+            console.log("Prefix prompt", prompt, chatMessages);
+
+            let response = await chatCompletion({
+                messages: [
+                    prompt,
+                    ...chatMessages,
+                ]
+            });
+            console.log(`OpenAI request took ${response.ms} and ${response.retries} retries`);
+            let responseContent = await response.content.readAll();
+            await postMessage(ctx, bot.slack_name, channel?.slack_info.id, responseContent);
+        }
     },
 });

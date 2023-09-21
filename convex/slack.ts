@@ -28,9 +28,11 @@ export const processEvent = internalAction({
         if (event.type == "message") {
             let user = await getUserProfile(ctx, event.user as string);
             let channel = await getChannelInfo(ctx, event.channel as string);
+            let client_msg_id = event.client_msg_id;
             await ctx.runMutation(internal.messages.insert, {
                 user_id: user._id,
                 channel_id: channel._id,
+                slack_client_msg_id: client_msg_id,
                 body: event.text,
             });
             // Respond to the message.

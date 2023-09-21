@@ -4,19 +4,37 @@ import { internal } from "./_generated/api";
 import { fetchEmbedding } from "./openai";
 
 export const insert = internalMutation({
-    args: { body: v.string(), user_id: v.id("users"), channel_id: v.id("channels")},
-    handler: async (ctx, { body, user_id, channel_id }) => {
+    args: {
+        body: v.string(),
+        user_id: v.id("users"),
+        channel_id: v.id("channels"),
+        slack_client_msg_id: v.optional(v.string()),
+    },
+    handler: async (ctx, { body, slack_client_msg_id, user_id, channel_id }) => {
+        // Don't record the message if there is an active bot in the channel
+        // because it pollutes the conversation too much.
+        let bot_for_channel = await ctx.db
+            .query("bots")
+            .withIndex("by_channel", (q) => q.eq("channel", channel_id))
+            .first();
+        if (bot_for_channel !== null) {
+            return;
+        }
+
+        // Insert the message.
         let id = await ctx.db.insert("messages", {
             body,
             user: user_id,
-            channel: channel_id
+            channel: channel_id,
+            slack_client_msg_id: slack_client_msg_id
         });
+
         // Generate embedding if there is any bot impersonating that user.
-        let bot = await ctx.db
+        let bot_for_user = await ctx.db
             .query("bots")
             .withIndex("by_impersonated_user", (q) => q.eq("impersonated_user", user_id))
             .first();
-        if (bot !== null) {
+        if (bot_for_user !== null) {
             await ctx.scheduler.runAfter(0, internal.messages.generateEmbedding, { message_id: id });
         }
     }
@@ -28,7 +46,6 @@ export const getLatest = internalQuery({
         if (!count) {
             count = 10;
         }
-        console.log("Fetching messages for ", channel_id, count)
         return await ctx.db.query("messages")
             .withIndex("by_channel", (q) => q.eq("channel", channel_id))
             .order("desc")

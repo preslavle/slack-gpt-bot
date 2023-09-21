@@ -6,7 +6,6 @@ export default defineSchema({
     name: v.string(),
     slack_id: v.string(),
     slack_profile: v.any(),
-    identity: v.optional(v.string()),
   }).index("by_slack_id", ["slack_id"]),
 
   channels: defineTable({
@@ -19,6 +18,7 @@ export default defineSchema({
     user: v.id("users"),
     channel: v.id("channels"),
     body: v.string(),
+    slack_client_msg_id: v.optional(v.string()),
     embedding: v.optional(v.array(v.float64())),
   })
   .index("by_channel", ["channel"])
@@ -31,6 +31,7 @@ export default defineSchema({
   bots: defineTable({
     channel: v.optional(v.id("channels")),
     name: v.string(),
+    slack_name: v.string(),
     impersonated_user: v.optional(v.id("users")),
   })
   .index("by_channel", ["channel"])

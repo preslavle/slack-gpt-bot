@@ -35,7 +35,6 @@ export const insert = internalMutation({
             name: slack_profile.real_name_normalized,
             slack_id: slack_id,
             slack_profile: slack_profile,
-            identity: "",
         });
         return (await ctx.db.get(channel_id))!;
     }
