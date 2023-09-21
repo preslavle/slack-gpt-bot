@@ -58,7 +58,7 @@ const prefixPrompt = async (
     }
     
     content +=
-         'Below are the current chat thread in the channel. Respond only to the last message and keep it brief within 500 characters: \n';
+         'Below are the current chat thread in the channel. DO NOT greet the other people more than once. Only greet ONCE. Do not use the word Hey too often. Respond only to the last message and keep it brief within 500 characters: \n';
 
     // content +=
     //     'Below are the current chat thread in the channel. DO NOT greet the other people more than once. Only greet ONCE. Do not use the word Hey too often. Respond only to the last message and keep it brief within 500 characters: \n';
