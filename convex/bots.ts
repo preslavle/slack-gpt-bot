@@ -49,12 +49,12 @@ const prefixPrompt = async (
 
     let facts = await ctx.runQuery(internal.bots.getBotFacts, { bot_id: profile._id });
     if (facts.length > 0) {
-        content += `Here are some facts you: ${facts.map((f) => f.text)}`;
+        content += `Here are some facts you: "${facts.map((f) => f.text).join(", ")}"`;
     }
 
     if (historicMessages.length > 0) {
         console.log("historicMessages", historicMessages)
-        content += `Here are relevant messages you have said in the past. Try to mimic those in your response ${historicMessages}.`;
+        content += `Here are relevant messages you have said in the past. Try to mimic those in your response "${historicMessages.join(", ")}".`;
     }
     
     content +=
@@ -74,14 +74,10 @@ export const respond = internalAction({
     handler: async (ctx, { channel_id }) => {
         let channel = await ctx.runQuery(internal.channels.getById, { channel_id });
         let messages = await ctx.runQuery(
-            internal.messages.getLatest,
-            { channel_id, count: 5 },
+            internal.messages.getLastConversation,
+            { channel_id },
         );
-        // The messages are in reverse order. Fix it so the bot responds to the
-        // last one.
-        messages.reverse();
 
-        // Only respond if a bot is configured for this channel.
         let bots = await ctx.runQuery(internal.bots.getForChannel, { channel_id });
         for (let bot of bots) {
             // Fetch relevant historic messages.

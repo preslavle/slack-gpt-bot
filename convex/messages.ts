@@ -36,16 +36,16 @@ export const insert = internalMutation({
     }
 });
 
-export const getLatest = internalQuery({
-    args: { channel_id: v.id("channels"), count: v.optional(v.number()) },
-    handler: async (ctx, { channel_id, count }) => {
-        if (!count) {
-            count = 10;
-        }
-        return await ctx.db.query("messages")
+export const getLastConversation = internalQuery({
+    args: { channel_id: v.id("channels") },
+    handler: async (ctx, { channel_id }) => {
+        let messages = await ctx.db.query("messages")
             .withIndex("by_channel", (q) => q.eq("channel", channel_id))
             .order("desc")
-            .take(count);
+            .take(5);
+        let recent_messages = messages.filter((m) => messages[0]._creationTime - m._creationTime < 60);
+        recent_messages.reverse();
+        return recent_messages;
     }
 });
 
