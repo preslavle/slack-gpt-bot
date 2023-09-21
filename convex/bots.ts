@@ -29,7 +29,7 @@ const relevantHistoricMessages = async (
     ctx: ActionCtx,
     user: Id<"users">,
     prompt: Doc<"messages">,
-) => {
+): Promise<string[]> => {
     let result = await fetchEmbedding(prompt.body);
     const results = await ctx.vectorSearch("messages", "by_embedding", {
         vector: result.embedding,

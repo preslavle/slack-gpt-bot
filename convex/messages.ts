@@ -11,16 +11,6 @@ export const insert = internalMutation({
         slack_client_msg_id: v.optional(v.string()),
     },
     handler: async (ctx, { body, slack_client_msg_id, user_id, channel_id }) => {
-        // Don't record the message if there is an active bot in the channel
-        // because it pollutes the conversation too much.
-        let bot_for_channel = await ctx.db
-            .query("bots")
-            .withIndex("by_channel", (q) => q.eq("channel", channel_id))
-            .first();
-        if (bot_for_channel !== null) {
-            return;
-        }
-
         // Insert the message.
         let id = await ctx.db.insert("messages", {
             body,
@@ -29,12 +19,18 @@ export const insert = internalMutation({
             slack_client_msg_id: slack_client_msg_id
         });
 
-        // Generate embedding if there is any bot impersonating that user.
+        // Generate embedding if there is any bot impersonating that user,
+        // but not if the message is coming from a conversation with a bot since
+        // the latter pollutes the information too much.
         let bot_for_user = await ctx.db
             .query("bots")
             .withIndex("by_impersonated_user", (q) => q.eq("impersonated_user", user_id))
             .first();
-        if (bot_for_user !== null) {
+        let bot_for_channel = await ctx.db
+            .query("bots")
+            .withIndex("by_channel", (q) => q.eq("channel", channel_id))
+            .first();
+        if (bot_for_channel === null && bot_for_user !== null) {
             await ctx.scheduler.runAfter(0, internal.messages.generateEmbedding, { message_id: id });
         }
     }
@@ -62,7 +58,7 @@ export const get = internalQuery({
 
 export const getBodyBatch = internalQuery({
     args: { ids: v.array(v.id("messages")) },
-    handler: async (ctx, { ids }) => {
+    handler: async (ctx, { ids }): Promise<string[]> => {
         let messages = [];
         for (let message of await Promise.all(ids.map((id) => ctx.db.get(id)))) {
             if (message !== null) {
