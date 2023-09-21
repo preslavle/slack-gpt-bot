@@ -26,8 +26,12 @@ export const processEvent = internalAction({
             return;
         }
         if (event.type == "message") {
-            let user = await getUserProfile(ctx, event.user as string);
-            let channel = await getChannelInfo(ctx, event.channel as string);
+            if (!event.user || !event.channel || !event.client_msg_id) {
+                console.log("Unsupported message", event);
+                return;
+            }
+            let user = await getUserProfile(ctx, event.user);
+            let channel = await getChannelInfo(ctx, event.channel);
             let client_msg_id = event.client_msg_id;
             await ctx.runMutation(internal.messages.insert, {
                 user_id: user._id,
