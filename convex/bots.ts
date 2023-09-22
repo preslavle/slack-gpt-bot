@@ -27,41 +27,55 @@ export const getBotFacts = internalQuery({
 
 const relevantHistoricMessages = async (
     ctx: ActionCtx,
-    user: Id<"users">,
+    user: Id<"users"> | undefined,
     prompt: Doc<"messages">,
-): Promise<string[]> => {
+): Promise<{body: string, author: string}[]> => {
     let result = await fetchEmbedding(prompt.body);
-    const results = await ctx.vectorSearch("messages", "by_embedding", {
-        vector: result.embedding,
-        limit: 10,
-        filter: (q) => q.eq("user", user),
-    });
-    let ids = results.map((r) => r._id);
+    let ids;
+    if (user) {
+        ids = (await ctx.vectorSearch("messages", "by_embedding", {
+            vector: result.embedding,
+            limit: 5,
+            filter: (q) => q.eq("user", user),
+        })).map((r) => r._id);
+    } else {
+        ids = (await ctx.vectorSearch("messages", "by_embedding", {
+            vector: result.embedding,
+            limit: 5,
+        })).map((r) => r._id);
+    }
     return await ctx.runQuery(internal.messages.getBodyBatch, { ids });
 }
 
 const prefixPrompt = async (
     ctx: ActionCtx,
-    profile: Doc<"bots">,
-    historicMessages: string[],
+    bot: Doc<"bots">,
+    relevantMessages: { body: string, author: string }[],
 ): Promise<LLMMessage> => {
-    let content = `Your name is ${profile.name}. You are responding to users on chat app called Slack.\n`;
+    let content = "You are responding to users on chat app called Slack.\n";
+    if (bot.impersonated_user) {
+        content = `Your name is ${bot.name}.\n`;
 
-    let facts = await ctx.runQuery(internal.bots.getBotFacts, { bot_id: profile._id });
-    if (facts.length > 0) {
-        content += `Here are some facts you: "${facts.map((f) => f.text).join(", ")}"`;
+        let facts = await ctx.runQuery(internal.bots.getBotFacts, { bot_id: bot._id });
+        if (facts.length > 0) {
+            content += `Here are some facts you: "${facts.map((f) => f.text).join(", ")}"\n`;
+        }
+
+        if (relevantMessages.length > 0) {
+            let concatenated = relevantMessages.map((m) => m.body).join(". ");
+            console.log("relevantMessages", concatenated)
+            content += `Here are relevant messages you have said in the past. Try to mimic those in your response "${concatenated}".\n`;
+        }
+    } else {
+        if (relevantMessages.length > 0) {
+            let concatenated = relevantMessages.map((m) => `${m.author} said ${m.body}`).join(". ");
+            console.log("relevantMessages", concatenated)
+            content += `Here are relevant information regarding the question you are asked "${concatenated}".\n`;
+        }
     }
 
-    if (historicMessages.length > 0) {
-        console.log("historicMessages", historicMessages)
-        content += `Here are relevant messages you have said in the past. Try to mimic those in your response "${historicMessages.join(", ")}".`;
-    }
-    
     content +=
-         'Below are the current chat thread in the channel. DO NOT greet the other people more than once. Only greet ONCE. Do not use the word Hey too often. Respond only to the last message and keep it brief within 500 characters: \n';
-
-    // content +=
-    //     'Below are the current chat thread in the channel. DO NOT greet the other people more than once. Only greet ONCE. Do not use the word Hey too often. Respond only to the last message and keep it brief within 500 characters: \n';
+        'Below are the current chat thread in the channel. DO NOT greet the other people more than once. Only greet ONCE. Do not use the word Hey too often. Respond only to the last message and keep it brief within 500 characters: \n';
 
     return {
         content,
@@ -81,12 +95,9 @@ export const respond = internalAction({
         let bots = await ctx.runQuery(internal.bots.getForChannel, { channel_id });
         for (let bot of bots) {
             // Fetch relevant historic messages.
-            let historicMessages : string[] = [];
-            if (bot.impersonated_user) {
-                historicMessages = await relevantHistoricMessages(
-                    ctx, bot.impersonated_user, messages[messages.length-1],
-                );
-            }
+            let historicMessages = await relevantHistoricMessages(
+                ctx, bot.impersonated_user, messages[messages.length-1],
+            );
 
             let prompt = await prefixPrompt(ctx, bot, historicMessages);
             let chatMessages : LLMMessage[] = messages.map((m) => {

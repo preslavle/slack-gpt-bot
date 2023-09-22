@@ -58,14 +58,12 @@ export const get = internalQuery({
 
 export const getBodyBatch = internalQuery({
     args: { ids: v.array(v.id("messages")) },
-    handler: async (ctx, { ids }): Promise<string[]> => {
-        let messages = [];
-        for (let message of await Promise.all(ids.map((id) => ctx.db.get(id)))) {
-            if (message !== null) {
-                messages.push(message.body);
-            }
-        }
-        return messages;
+    handler: async (ctx, { ids }): Promise<{body: string, author: string}[]> => {
+        let messages = await Promise.all(ids.map((id) => ctx.db.get(id)));
+        let users = await Promise.all(messages.map((message) => ctx.db.get(message!.user)));
+        return messages.map((message, i) => {
+            return { body: message!.body, author: users[i]!.name };
+        });
     }
 });
 
